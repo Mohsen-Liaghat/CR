@@ -24,6 +24,8 @@ Now we need an implicit coercion from atomic_term to term write proofs simpler
 *)
 Coercion var : atomic_term >-> term.
 
+Notation " 'λ' x . t " := ( abst x t ) ( at level 100 ).
+
 (** 
 Now we need a free_vars function that takes a term as parameter then return a list of the term free variables.
 *)
