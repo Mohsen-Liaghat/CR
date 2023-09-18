@@ -27,105 +27,28 @@ Substitution is needed for the definition of alpha equivalency and beta reductio
 In this definition, we split the var case into 2 cases, and we also split the abst case into 3 cases because it makes the proof easier.
 It is obvious that our definition of substitution restricts the number of substitution results in some cases, but because our definition results are a subset of the original definition results, these results are alpha-equivalent to the original ones, so our definition is also correct.
 *)
-Inductive substitution : atomic_term -> term -> term -> term -> Prop := 
-  | subst_var1 (x : atomic_term ) ( T : term ) : substitution x x T T
-  | subst_var2 { x y : atomic_term } ( T : term ) : x <> y -> substitution x y T y 
-  | subst_appl { x : atomic_term } { T1 T2 T1' T2' T : term } : 
-    substitution x T1 T T1' -> substitution x T2 T T2' -> substitution x ( appl T1 T2 ) T ( appl T1' T2' )
 
-  | subst_abst1 { x : atomic_term } { T Tx : term } : substitution x ( abst x T ) Tx ( abst x T )
-
-  | subst_abst2 { x y : atomic_term }{ T Ty T' : term } :
-     x <> y -> is_free Ty x = false -> substitution y T Ty T' -> substitution y ( abst x T ) Ty ( abst x T' ) 
-
-  | subst_abst3 { x y z : atomic_term } { T Ty Tz T' : term } : 
-    x <> y -> is_free Ty x = true -> is_free T z = false -> is_free Ty z = false -> substitution x T z Tz -> 
-    substitution y Tz Ty T' -> substitution y ( abst x T ) Ty ( abst z T' ).
-
-Theorem subst_neqb_free ( M N MN : term ) ( x : atomic_term ) : substitution x M N MN -> forall y, is_free MN y = true -> is_free M y = true \/ is_free N y = true.
-Proof.
-  intro SMN.
-  induction SMN; intros.
-  - right. assumption.
-  - left. assumption.
-  - unfold is_free in H. simpl in H. rewrite existsb_app in H. apply Bool.orb_true_elim in H. destruct H.
-    + apply IHSMN1 in e. destruct e.
-      * left. unfold is_free. simpl. rewrite existsb_app. unfold is_free in H. apply Bool.orb_true_iff. left. assumption.
-      * right. assumption.
-    + apply IHSMN2 in e. destruct e.
-      * left. unfold is_free. simpl. rewrite existsb_app. unfold is_free in H. apply Bool.orb_true_iff. right. assumption.
-      * right. assumption.
-  - left. assumption.
-  - admit.  
-  (* - assert ( is_free T' y )
-  unfold is_free in H1. simpl in H1. apply existsb_exists in H1. destruct H1. destruct H1.  *)
-  - admit.
-Admitted.
-
-(**
-Now we can prove that renaming doesn't change the height of a term.
-(Our lemma is more general we because the renaming conditions didn't check.)
-*)
-
-Lemma renaming_height ( M : term ) : forall x y : atomic_term , forall M' : term, substitution x M y M' -> height M = height M' .
-Proof.
-  remember (height M).
-  generalize dependent M.
-  apply strong_induction with ( n := n );
-  intros.
-  {
-    inversion H;
-    subst;
-    simpl;
-    try reflexivity;
-    simpl in Heqn;
-    lia.
-  }
-  {
-    inversion H0;
-    subst;
-    simpl in Heqn;
-    try lia;
-    apply eq_add_S in Heqn;
-    subst;
-    simpl;
-    f_equal.
-      - f_equal.
-        + apply H with ( y := y ) ( x := x ) ( M := T1 ); auto with arith.
-        + apply H with ( y := y ) ( x := x ) ( M := T2 ); auto with arith.
-      - apply H with ( y := y ) ( x := x ) ( M := T ); auto with arith.
-      - assert ( height T = height Tz ). 
-        { 
-          apply H with ( y := z ) ( x := x0 ) ( M := T ); auto with arith. 
-        }
-        rewrite H7.
-        apply H with ( y := y ) ( x := x ) ( M := Tz ); auto with arith. 
-        lia.
-  }
-Qed.
-
-(**
-Now we can define the alpha relation between two terms( alpha equivalency).
-*)
+Fixpoint rename ( x y : atomic_term ) ( t : term) : term := 
+  match t with 
+  | var z => if (x =? z) then y else z
+  | appl t1 t2 => appl ( rename x y t1 ) ( rename x y t2 )
+  | abst z t' => if ( z =? x ) then abst y ( rename x y t' ) else abst z ( rename x y t' )
+  end.
 
 Inductive alpha : term -> term -> Prop :=
-  | rename { t t' : term }{ x y : atomic_term } : is_free t y = false -> substitution x t y t' -> alpha ( abst x t ) ( abst y t' )
-  | alpha_abst { t t' : term }{ x : atomic_term } : alpha t t' -> alpha ( abst x t ) ( abst x t' )
-  | alpha_cong { t1 t2 t'1 t'2 : term } : alpha t1 t'1 -> alpha t2 t'2 -> alpha ( appl t1 t2 ) ( appl t'1 t'2 )
-  | alpha_refl ( t : term ) : alpha t t
-  | alpha_symm ( t t' : term ) : alpha t t' -> alpha t' t
-  | alpha_trans { t t' t'' : term } : alpha t t' -> alpha t' t'' -> alpha t t''.
-
-(**
-Here, We can prove alpha is an equivalence relation. We need this in order to use some of Coq's tactics, like reflexivity, for the alpha relation.
-*)
+  | renaming ( x y : atomic_term ) ( t : term ) : alpha ( abst x t ) ( abst y ( rename x y t ) )
+  | a_refl  ( M : term ) : alpha M M 
+  | a_symm { M N : term } : alpha M N -> alpha N M 
+  | a_trans ( N : term ) { M P : term } : alpha M N -> alpha N P -> alpha M P 
+  | a_cong { M M' N N' : term } : alpha M M' -> alpha N N' -> alpha ( appl M N ) ( appl M' N' ) 
+  | a_abst ( x : atomic_term ) { M N : term } : alpha M N -> alpha ( abst x M ) ( abst x N ).
 
 #[local]Instance alpha_eq : Equivalence alpha.
 Proof.
   constructor.
-  - auto using alpha_refl.
-  - auto using alpha_symm.
-  - intros X Y Z H1 H2. apply @alpha_trans with ( t' := Y ); assumption.
+  - auto using a_refl.
+  - auto using a_symm.
+  - intros X Y Z H1 H2. apply @a_trans with ( N := Y ); assumption.
 Defined.
 (**
 Then we have chosen a desirable notation for the alpha relation.
@@ -136,62 +59,60 @@ Notation "A '~' B" := ( alpha A B )( at level 100 ).
 Here we have defined beta_reduction, and after that, we have defined gbeta_reduction. Our goal is to prove that "trans_clos gbeta = trans_clos beta" and " diamond_property (trans_clos gbeta)".
 *)
 
-Theorem wf_subst ( M : term ) : forall x : atomic_term, forall N M' MN MN' : term, substitution x M N MN -> substitution x M' N MN' -> alpha M M' -> MN ~ MN' .
-Proof.
-  remember ( height M ).
-  generalize dependent M.
-  apply strong_induction with ( n := n ). 
-  {
-    intros M hM x N M' MN MN' SMN SMN' ea.
-    destruct M; simpl in hM; try lia.
-    inversion ea; subst.
-    {
-      inversion SMN; 
-      inversion SMN'; 
-      subst; 
-      try reflexivity; 
-      contradiction.
-    }
-    {
+Inductive substitution : term -> atomic_term -> term -> term -> Prop :=
+  | subst_var1 ( x : atomic_term ) ( M : term ) : substitution x x M M
+  | subst_var2 ( z x : atomic_term ) ( M : term ) : x <> z -> substitution z x M z 
+  | subst_appl { x : atomic_term } { M P M' P' N : term } : substitution M x N M' -> substitution P x N P' -> substitution ( appl M P ) x N ( appl M' P' )
+  | subst_abst1 ( x : atomic_term ) ( M N : term ) : substitution ( abst x M ) x N ( abst x M )
+  | subst_abst2 ( x y : atomic_term ) { M M' N : term } : x <> y -> is_free N y = false -> substitution M x N M' -> substitution ( abst y M ) x N ( abst y M' )
+  | subst_abst3 ( x y z : atomic_term ) { M M' N : term } : x <> y -> is_free N y = true -> is_free N z = false -> is_free M z = false -> substitution ( rename y z M ) x N M' -> substitution ( abst y M ) x N ( abst z M' ).
 
-    }
-    {
-    
-    }
-    inversion SM'; inversion SM''; subst; try reflexivity; contradiction.
-  }
-  {
-    intros n0 SIH M hM x N M' M'' SM' SM''.
-    destruct M; simpl in hM; try lia.
-    {
-      apply eq_add_S in hM.
-      inversion SM'; inversion SM''; subst; try reflexivity; try contradiction.
-      {
-        apply alpha_abst.
-        apply SIH with ( k := height M ) ( M := M ) ( N := N ) ( x := x ); try lia; assumption.
-      }
-      {
-        rewrite H10 in H3.
-        discriminate.
-      }
-      {
-        rewrite H14 in H2.
-        discriminate.
-      }
-      {
-        assert ( ( abst z Tz) ~ ( abst z0 Tz0 ) ).
-        {
-          transitivity ( abst x0 M).
-          - symmetry. apply rename; assumption.
-          - apply rename; assumption.
-        }
-        
-      }
-    }
-    {}
-  }
+Theorem wf_subst { M : term } { x : atomic_term } : forall N M' M'' : term, substitution M x N M' -> substitution M x N M'' -> M' ~ M'' .
+Proof.
+  induction M; intros.
+  - inversion H; subst.
+    + inversion H0; subst.
+      * reflexivity.
+      * contradiction.
+    + inversion H0; subst.
+      * contradiction. 
+      * reflexivity. 
+  - inversion H; subst.
+    + inversion H0; subst; try contradiction. reflexivity.
+    + inversion H0; subst. try contradiction. 
+      * apply a_abst. apply (IHM N); assumption.
+      * rewrite H4 in H6. discriminate.
+    + inversion H0; subst; try contradiction. 
+      * rewrite H4 in H8. discriminate.
+      * apply (a_trans ( abst x0 M )). 
+        -- 
+        --
+
+  -
 Qed.
 
+
+Lemma subst_lemma { x y : atomic_term } { M : term } : forall N P MN MP NP MNP : term, x <> y -> is_free P x = false -> substitution M x N MN -> substitution MN y P MNP -> substitution M y P MP -> substitution N y P NP -> substitution MP x NP MNP.
+Proof.
+  induction M; intros N P MN MP NP MNP xy boundedx SMN SMNP SMP SNP.
+  - inversion SMN; subst.
+    + inversion SMP; subst; try contradiction.
+      * inversion SNP; subst; try contradiction. inversion SMP; subst; try contradiction. constructor.
+      * inversion SNP; subst; try contradiction. inversion SMP; subst; try contradiction. constructor.
+      * 
+      *
+      *
+      *
+    +
+  - destruct ( x0 =? x ) eqn:E.
+    + apply PeanoNat.Nat.eqb_eq in E. subst. inversion SMN. subst.
+    +
+  -
+  -
+Qed.
+
+
+(* β_reduction  *)
 Inductive beta : term -> term -> Prop :=
   | beta_reduct { P Q PQ : term } { x : atomic_term } : ( substitution x P Q PQ ) -> beta ( appl ( abst x P ) Q ) PQ
   | beta_abst { P P' : term } { x : atomic_term } : beta P P' -> beta ( abst x P ) ( abst x P' )
@@ -471,7 +392,7 @@ Proof.
       - apply E.
     }
     {
-      apply alpha_abst.
+      apply a_abst.
       apply IHsubstitution.
       reflexivity.
     }
